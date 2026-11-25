@@ -1,0 +1,49 @@
+name: Release Cross-Platform Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Run tests and cross-compile all desktop targets
+        run: |
+          chmod +x scripts/build-all.sh
+          ./scripts/build-all.sh
+          mkdir -p release-assets/Claude-Session-Bridge/{macOS,Windows,Linux}
+          cp -R "dist/Claude Session Bridge.app" "release-assets/Claude-Session-Bridge/Claude Session Bridge.app"
+          cp dist/csb-darwin-arm64 dist/csb-darwin-amd64 release-assets/Claude-Session-Bridge/macOS/
+          cp dist/csb-windows-amd64.exe dist/csb-windows-arm64.exe release-assets/Claude-Session-Bridge/Windows/
+          cp dist/csb-linux-amd64 release-assets/Claude-Session-Bridge/Linux/
+          cp README.md LICENSE release-assets/Claude-Session-Bridge/
+          (cd release-assets && zip -rq ../dist/Claude-Session-Bridge-all-platforms.zip Claude-Session-Bridge)
+          (cd dist && zip -rq Claude-Session-Bridge-macOS-App.zip "Claude Session Bridge.app")
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/Claude-Session-Bridge-all-platforms.zip
+            dist/Claude-Session-Bridge-macOS-App.zip
+            dist/csb-windows-amd64.exe
+            dist/csb-windows-arm64.exe
+            dist/csb-darwin-arm64
+            dist/csb-darwin-amd64
+            dist/csb-linux-amd64

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Session Bridge — 跨账号本地会话管理与交接</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <!-- Top Header Bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-logo">⚡</span>
+        <div>
+          <div class="brand-title">Claude Session Bridge</div>
+          <div class="brand-sub" id="sys-meta">本地离线 · 零凭证接触</div>
+        </div>
+      </div>
+
+      <div class="topbar-search">
+        <span class="search-icon">🔍</span>
+        <input id="search-input" type="text" placeholder="全文搜索所有账号的历史对话、代码、报错、项目... (⌘K / Ctrl+K)" autocomplete="off" />
+        <button id="search-clear" class="icon-btn hidden" title="清空搜索">✕</button>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="btn-mcp-modal" class="btn btn-accent" title="一键挂载本地 MCP 到 Claude CLI / Desktop / IDE">
+          🔌 <span data-i18n="mcpSetup">MCP 通用接入</span>
+        </button>
+        <button id="btn-sources-modal" class="btn btn-ghost" title="管理多账号配置目录与跨机导入">
+          📁 <span data-i18n="sourcesImport">目录 / 跨机导入</span>
+        </button>
+        <button id="btn-refresh" class="btn btn-ghost" title="重新扫描本地会话">🔄</button>
+        <button id="btn-lang" class="btn btn-ghost" title="切换语言">EN</button>
+        <button id="btn-theme" class="btn btn-ghost" title="切换暗/亮主题">☀️</button>
+      </div>
+    </header>
+
+    <!-- 3-Pane Workspace -->
+    <main class="workspace">
+      <!-- Left Sidebar: Sources & Projects -->
+      <aside class="pane pane-left">
+        <div class="pane-section">
+          <div class="section-header">
+            <span data-i18n="sources">配置来源</span>
+            <span id="source-count" class="badge">0</span>
+          </div>
+          <div id="source-list" class="nav-list"></div>
+        </div>
+
+        <div class="pane-section pane-section-grow">
+          <div class="section-header">
+            <span data-i18n="projects">逻辑项目（跨系统自动聚合）</span>
+            <span id="project-count" class="badge">0</span>
+          </div>
+          <div id="project-list" class="nav-list"></div>
+        </div>
+
+        <div class="safety-pill">
+          <span>🛡️</span>
+          <span data-i18n="safetyNote">纯本地只读扫描，绝不读取 Cookie / Keychain</span>
+        </div>
+      </aside>
+
+      <!-- Middle Pane: Session List -->
+      <section class="pane pane-middle">
+        <div class="pane-toolbar">
+          <div class="toolbar-title">
+            <span id="list-heading" data-i18n="allSessions">全部本地会话</span>
+            <span id="session-count" class="badge">0</span>
+          </div>
+          <div class="toolbar-meta" id="scan-time"></div>
+        </div>
+        <div id="session-list" class="session-list">
+          <div class="empty-state">正在扫描本地 Claude Code 会话…</div>
+        </div>
+      </section>
+
+      <!-- Right Pane: Conversation Reader & Actions -->
+      <section class="pane pane-right">
+        <div id="reader-empty" class="reader-empty">
+          <div class="hero-icon">🌉</div>
+          <h2 data-i18n="welcomeTitle">跨账号、跨系统无缝接力 Claude Code 对话</h2>
+          <p data-i18n="welcomeDesc">从左侧选择任意历史会话，可一键复制结构化交接上下文、通过本地 MCP 让新账号直接读取，或执行安全 Clean Fork 清洗克隆。</p>
+          <div class="hero-cards">
+            <div class="hero-card">
+              <div class="hero-card-title">🔌 本地 MCP 通用读取</div>
+              <div class="hero-card-text">一次挂载，同时打通 Claude Desktop（Code）、终端 CLI 与 VS Code / Cursor。</div>
+            </div>
+            <div class="hero-card">
+              <div class="hero-card-title">🧬 Clean Fork 安全清洗</div>
+              <div class="hero-card-text">自动剥离 thinking 加密签名与服务端元数据，解决跨账号 --resume 报错。</div>
+            </div>
+            <div class="hero-card">
+              <div class="hero-card-title">📦 macOS ↔ Windows 迁移</div>
+              <div class="hero-card-text">导出已脱敏的 .csb-bundle.zip，跨系统自动重映射项目路径编码。</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="reader-view" class="reader-view hidden">
+          <div class="reader-header">
+            <div class="reader-title-row">
+              <h1 id="detail-title" class="detail-title"></h1>
+              <div class="detail-badges" id="detail-badges"></div>
+            </div>
+            <div class="detail-meta" id="detail-meta"></div>
+            <div class="reader-actions">
+              <div class="handoff-group">
+                <select id="handoff-level" class="select-sm" title="交接上下文详细度">
+                  <option value="brief">精简交接 (省 Token)</option>
+                  <option value="standard" selected>标准交接 (推荐)</option>
+                  <option value="full">完整清洗记录</option>
+                </select>
+                <button id="btn-copy-handoff" class="btn btn-primary">📋 复制交接上下文</button>
+                <button id="btn-write-handoff" class="btn btn-ghost">📝 写入 HANDOFF.md</button>
+              </div>
+              <button id="btn-copy-mcp-prompt" class="btn btn-accent">🔗 复制 MCP 接力指令</button>
+              <button id="btn-open-desktop-push" class="btn btn-primary">📌 推送到 Desktop 侧边栏</button>
+              <button id="btn-open-fork" class="btn btn-secondary">🧬 干净克隆 (Clean Fork)</button>
+              <button id="btn-export-md" class="btn btn-ghost">⬇️ 导出 MD</button>
+              <button id="btn-export-bundle" class="btn btn-ghost">📦 导出跨机包</button>
+            </div>
+          </div>
+
+          <div id="detail-files" class="touched-files hidden"></div>
+          <div id="turn-list" class="turn-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: MCP Universal Setup -->
+  <div id="modal-mcp" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>🔌 MCP 通用接入向导（全端适配）</h3>
+        <button class="icon-btn modal-close" data-close="modal-mcp">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          将本工具作为本地 stdio MCP 服务挂载后，你在 <strong>Claude Code CLI、Claude Desktop（Code 标签页）、VS Code / Cursor</strong> 中切换任意账号，都可以直接让 Claude 读取本机历史会话。每次写入配置前都会自动创建 <code>.csb-bak-*</code> 备份。
+        </p>
+        <div id="mcp-target-list" class="target-list"></div>
+        <div class="code-callout">
+          <div class="callout-label">新账号接力示例指令：</div>
+          <code>请用 claude-session-bridge 读取我在这个项目里最近一次对话的进度，核对当前代码后继续完成剩下的任务。</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Push to Claude Desktop Code Sidebar -->
+  <div id="modal-desktop-push" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>📌 推送到 Claude Desktop Code 侧边栏</h3>
+        <button class="icon-btn modal-close" data-close="modal-desktop-push">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          自动执行 <strong>Clean Fork 安全清洗</strong>（剥离 <code>thinking</code> 加密签名与旧账号服务端字段），并在目标账号的 <code>claude-code-sessions</code> 目录生成索引。<strong>重启 Claude Desktop 后即可在左侧边栏看到并继续该会话</strong>（仅限 Code 标签页，不读取任何 Cookie）。
+        </p>
+        <div class="form-group">
+          <label>选择目标桌面端账号工作区（标记「最近活跃」的通常是当前登录账号）</label>
+          <div id="desktop-ws-list" class="target-list"></div>
+        </div>
+        <div class="form-group">
+          <label>侧边栏显示标题</label>
+          <input id="push-title" type="text" />
+        </div>
+        <div class="form-group">
+          <label>项目路径（<code>cwd</code>）</label>
+          <input id="push-cwd" type="text" />
+        </div>
+        <div class="modal-footer-inline">
+          <button id="btn-run-desktop-push" class="btn btn-primary">确认清洗并推送到侧边栏</button>
+        </div>
+        <div id="desktop-push-result" class="result-box hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Clean Fork -->
+  <div id="modal-fork" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>🧬 干净克隆迁移（Clean Fork）</h3>
+        <button class="icon-btn modal-close" data-close="modal-fork">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          生成一条全新的本地 <code>.jsonl</code> 会话：自动生成新 UUID、<strong>剥离 <code>thinking</code> 加密签名</strong>与服务端遥测字段、重映射目标系统项目路径，原账号文件保持完好不动。
+        </p>
+        <div class="form-group">
+          <label>目标 Claude 配置目录（留空则使用默认 <code>~/.claude</code>）</label>
+          <input id="fork-config-dir" type="text" placeholder="例如 ~/.claude 或 ~/.claude-work 或 C:\Users\you\.claude" />
+        </div>
+        <div class="form-group">
+          <label>目标项目路径（<code>cwd</code>，支持 macOS / Windows 路径）</label>
+          <input id="fork-cwd" type="text" placeholder="例如 /Users/you/project 或 D:\work\project" />
+        </div>
+        <div class="form-group">
+          <label>新会话标题（可选）</label>
+          <input id="fork-title" type="text" placeholder="例如 原标题 [Clean Fork]" />
+        </div>
+        <div class="modal-footer-inline">
+          <button id="btn-run-fork" class="btn btn-primary">开始清洗并克隆</button>
+        </div>
+        <div id="fork-result" class="result-box hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Sources & Cross-OS Bundle Import -->
+  <div id="modal-sources" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>📁 多账号配置目录 & 跨系统包导入</h3>
+        <button class="icon-btn modal-close" data-close="modal-sources">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4 class="sub-heading">1. 添加自定义 Claude 配置目录（如多账号 CLAUDE_CONFIG_DIR 或网盘目录）</h4>
+        <div class="form-row">
+          <input id="src-label" type="text" placeholder="别名（如：公司账号）" />
+          <input id="src-dir" type="text" placeholder="路径（如 ~/.claude-work 或 D:\Sync\.claude）" />
+          <button id="btn-add-source" class="btn btn-primary">添加</button>
+        </div>
+        <div id="custom-source-list" class="target-list"></div>
+
+        <hr class="divider" />
+
+        <h4 class="sub-heading">2. 导入跨机迁移包（<code>.csb-bundle.zip</code>，支持 macOS ↔ Windows）</h4>
+        <div class="form-group">
+          <label>选择从另一台电脑导出的 <code>.csb-bundle.zip</code></label>
+          <input id="import-file" type="file" accept=".zip" />
+        </div>
+        <div class="form-row">
+          <input id="import-cwd" type="text" placeholder="映射到本机项目路径（可选）" />
+          <input id="import-cfg" type="text" placeholder="目标配置目录（留空默认 ~/.claude）" />
+          <button id="btn-import-bundle" class="btn btn-accent">导入并映射</button>
+        </div>
+        <div id="import-result" class="result-box hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

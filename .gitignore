@@ -1,0 +1,12 @@
+# Build artifacts (published via GitHub Releases instead of git tree)
+dist/
+*.exe
+*.app/
+*.zip
+*.log
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
